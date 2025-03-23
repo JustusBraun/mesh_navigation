@@ -445,6 +445,9 @@ void MeshMap::calculateEdgeCosts(const rclcpp::Time& map_stamp)
       "The default_layer " + default_layer_ + " could not be loaded or was not configured!"
     );
   }
+  
+  // Lock the layer were about to read from
+  auto rlock = ptr->readLock();
 
   const auto default_value = ptr->defaultValue();
   const auto& cost_map = ptr->costs();
@@ -458,6 +461,8 @@ void MeshMap::calculateEdgeCosts(const rclcpp::Time& map_stamp)
   {
     vertex_costs[vH] = 1.0;
   }
+  // We are done reading from the layer
+  rlock.unlock();
 
   RCLCPP_INFO_STREAM(node->get_logger(), "Layer weighting factor is: " << layer_factor);
   for (auto eH : mesh_ptr->edges())
