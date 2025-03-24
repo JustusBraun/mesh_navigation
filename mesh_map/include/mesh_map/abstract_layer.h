@@ -171,6 +171,7 @@ public:
     layer_namespace_ = "mesh_map/" + name;
     notify_ = notify_update;
     map_ptr_ = map;
+    logger_ = node->get_logger().get_child(layer_name_);
     return initialize();
   }
   
@@ -222,10 +223,18 @@ protected:
   rclcpp::Node::SharedPtr node_;
   std::string layer_namespace_;
 
+  const rclcpp::Logger& get_logger() const
+  {
+    return logger_;
+  }
+
 private:
   notify_func notify_;
 
   std::shared_mutex mutex_;
+  
+  // Logger will be replaced by the init function
+  rclcpp::Logger logger_ = rclcpp::get_logger("abstract_layer");
 };
 
 } /* namespace mesh_map */
