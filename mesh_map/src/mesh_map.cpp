@@ -412,18 +412,50 @@ bool MeshMap::loadLayerPlugins()
   return layer_manager_.load_layer_plugins(node->get_logger());
 }
 
-void MeshMap::layerChanged(const std::string& layer_name)
+void MeshMap::layerChanged(const std::string& layer_name, const std::set<lvr2::VertexHandle>& changes)
 {
   std::lock_guard lock(layer_mtx);
 
   RCLCPP_INFO_STREAM(node->get_logger(), "Layer \"" << layer_name << "\" changed.");
-  // TODO: Implement this
   
-  if (layer_name == default_layer_)
+  if (layer_name != default_layer_)
   {
-    const auto ts = node->get_clock()->now();
-    this->calculateEdgeCosts(ts);
+    return;
   }
+
+  const auto ptr = layer(default_layer_);
+  
+  if (nullptr == ptr)
+  {
+    RCLCPP_ERROR(
+      node->get_logger(),
+      "Default layer '%s' could not be loaded or was not configured!",
+      default_layer_.c_str()
+    );
+    return;
+  }
+  
+  // Lock the layer were about to read from
+  auto rlock = ptr->readLock();
+
+  const auto default_value = ptr->defaultValue();
+  const auto& cost_map = ptr->costs();
+
+  // Update only the changed vertices
+  for (const auto vH: changes)
+  {
+    vertex_costs.insert(vH, cost_map.containsKey(vH) ? cost_map[vH] : default_value);
+  }
+
+  // Is this necessary?
+  for (const auto vH : ptr->lethals())
+  {
+    vertex_costs[vH] = 1.0;
+  }
+  // We are done reading from the layer
+  rlock.unlock();
+  const auto ts = node->get_clock()->now();
+  this->updateEdgeCosts(ts, changes);
 }
 
 bool MeshMap::initLayerPlugins()
@@ -505,6 +537,55 @@ void MeshMap::calculateEdgeCosts(const rclcpp::Time& map_stamp)
   }
 
   RCLCPP_INFO(node->get_logger(), "Successfully calculated edge costs!");
+}
+
+void MeshMap::updateEdgeCosts(const rclcpp::Time& map_stamp, const std::set<lvr2::VertexHandle>& changed)
+{
+  RCLCPP_DEBUG(node->get_logger(), "Updating edge costs from layer %s", default_layer_.c_str());
+
+  // Edge costs are only affected by vertex costs if layer_factor is not 0
+  if (0 == layer_factor)
+  {
+    RCLCPP_DEBUG(node->get_logger(), "layer_factor is 0, skipping edge cost update");
+    return;
+  }
+
+  RCLCPP_DEBUG(node->get_logger(), "Layer weighting factor is: %f", layer_factor);
+  // Only update edges incident to a changed vertex
+  // Declare edges here to prevent loop allocations
+  std::vector<lvr2::EdgeHandle> edges;
+  for (const auto& changedH: changed)
+  {
+    edges.clear();
+    mesh_ptr->getEdgesOfVertex(changedH, edges);
+    for (const auto eH : edges)
+    {
+      // Get both Vertices of the current Edge
+      std::array<lvr2::VertexHandle, 2> eH_vHs = mesh_ptr->getVerticesOfEdge(eH);
+      const lvr2::VertexHandle& vH1 = eH_vHs[0];
+      const lvr2::VertexHandle& vH2 = eH_vHs[1];
+      // Get the Riskiness for the current Edge (the maximum value from both
+      // Vertices)
+      if (std::isinf(vertex_costs[vH1]) || std::isinf(vertex_costs[vH2]))
+      {
+        edge_weights[eH] = edge_distances[eH];
+      }
+      else
+      {
+        float cost_diff = std::fabs(vertex_costs[vH1] - vertex_costs[vH2]);
+
+        float vertex_factor = layer_factor * cost_diff;
+        if (std::isnan(vertex_factor))
+        {
+          RCLCPP_INFO_STREAM(node->get_logger(), "NaN: v1:" << vertex_costs[vH1] << " v2:" << vertex_costs[vH2]
+                            << " vertex_factor:" << vertex_factor << " cost_diff:" << cost_diff);
+        }
+        edge_weights[eH] = edge_distances[eH] * (1 + vertex_factor);
+      }
+    }
+  }
+
+  RCLCPP_DEBUG(node->get_logger(), "Successfully updated edge costs!");
 }
 
 void MeshMap::findLethalByContours(const int& min_contour_size, std::set<lvr2::VertexHandle>& lethals)
