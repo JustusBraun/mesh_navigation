@@ -116,7 +116,12 @@ public:
   virtual void updateLethal(std::set<lvr2::VertexHandle>& added_lethal,
                             std::set<lvr2::VertexHandle>& removed_lethal) = 0;
   
-  // TODO: Should this replace updateLethal
+  // TODO: Should this replace updateLethal, should this be named onInputChanged?
+  /**
+   *  @brief Called by the mesh map if one of the input layers has changed.
+   *
+   *  @param changed The vertices whose cost has changed in one of the input layers.
+   */
   virtual void updateInput(const std::set<lvr2::VertexHandle>& /* changed */)
   {}
 
@@ -175,6 +180,7 @@ public:
     return initialize();
   }
   
+  // TODO: Should these be protected functions?
   void notifyChange()
   {
     std::set<lvr2::VertexHandle> changed;
@@ -204,6 +210,7 @@ public:
     return std::shared_lock(mutex_);
   }
 
+protected:
   /**
    *  @brief Aquire a write lock on the layer to prevent simultaneaus reads or writes.
    *
@@ -215,7 +222,14 @@ public:
     return std::unique_lock(mutex_);
   }
 
-protected:
+  /**
+   *  @brief Get the layer specific logger (mesh_map.layer_name)
+   */
+  const rclcpp::Logger& get_logger() const
+  {
+    return logger_;
+  }
+
   std::string layer_name_;
   // Use weak ptr here to prevent cyclic shared ptrs map -> layer -> map
   std::weak_ptr<mesh_map::MeshMap> map_ptr_;
@@ -223,10 +237,6 @@ protected:
   rclcpp::Node::SharedPtr node_;
   std::string layer_namespace_;
 
-  const rclcpp::Logger& get_logger() const
-  {
-    return logger_;
-  }
 
 private:
   notify_func notify_;
