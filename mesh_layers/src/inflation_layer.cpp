@@ -109,7 +109,10 @@ void InflationLayer::updateLethal(std::set<lvr2::VertexHandle>& added_lethal,
 */
 }
 
-void InflationLayer::updateInput(const std::set<lvr2::VertexHandle>& changed)
+void InflationLayer::updateInput(
+  const rclcpp::Time& timestamp,
+  const std::set<lvr2::VertexHandle>& changed
+)
 {
   const mesh_map::LayerTimer::TimePoint t0 = mesh_map::LayerTimer::Clock::now();
   const std::vector<std::string> inputs = node_->get_parameter(
@@ -191,9 +194,9 @@ void InflationLayer::updateInput(const std::set<lvr2::VertexHandle>& changed)
   // Unlock before notifying others
   wlock.unlock();
   const mesh_map::LayerTimer::TimePoint t2 = mesh_map::LayerTimer::Clock::now();
-  this->notifyChange(update);
+  this->notifyChange(timestamp, update);
   const mesh_map::LayerTimer::TimePoint t3 = mesh_map::LayerTimer::Clock::now();
-  mesh_map::LayerTimer::recordUpdateDuration(layer_name_, t0, t1 - t0, t2 - t1, t3 - t2);
+  mesh_map::LayerTimer::recordUpdateDuration(layer_name_, timestamp, t1 - t0, t2 - t1, t3 - t2);
 }
 
 inline float InflationLayer::computeUpdateSethianMethod(const float& d1, const float& d2, const float& a,
