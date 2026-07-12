@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <lvr2/geometry/Handles.hpp>
 #include <mesh_layers/obstacle_layer.h>
 #include <mesh_map/mesh_map.h>
 #include <mesh_map/timer.h>
@@ -242,16 +244,38 @@ void ObstacleLayer::processPointCloud(const sensor_msgs::msg::PointCloud2::Const
   // Create new cost map and lethal set
   lvr2::SparseVertexMap<float> costs;
   std::set<lvr2::VertexHandle> lethals;
-  for (size_t idx = 0; idx < hits.size(); idx++)
   {
-    if (hits[idx] && results[idx].dist <= config_.robot_height)
+    // Get write lock to update observation timestamps
+    rclcpp::Time msg_stamp = msg->header.stamp;
+    auto wlock = this->writeLock();
+    for (size_t idx = 0; idx < hits.size(); idx++)
     {
-      const lvr2::FaceHandle face(results[idx].face_id);
-      for (const auto vertex: map->mesh()->getVerticesOfFace(face))
+      if (hits[idx] && results[idx].dist <= config_.robot_height)
       {
-        costs.insert(vertex, std::numeric_limits<float>::infinity());
-        lethals.insert(vertex);
+        const lvr2::FaceHandle face(results[idx].face_id);
+        for (const auto vertex: map->mesh()->getVerticesOfFace(face))
+        {
+          timestamps_.insert(vertex, msg_stamp);
+        }
       }
+    }
+
+    // Remove all vertices older than x
+    std::vector<lvr2::VertexHandle> to_remove;
+    for (const lvr2::VertexHandle vH: timestamps_) {
+      if ((msg_stamp - timestamps_[vH]) > rclcpp::Duration::from_seconds(2.0)) {
+        to_remove.push_back(vH);
+      }
+    }
+
+    for (const lvr2::VertexHandle vH: to_remove) {
+        timestamps_.erase(vH);
+    }
+
+    for (const auto& key: timestamps_)
+    {
+      costs.insert(key, std::numeric_limits<float>::infinity());
+      lethals.insert(key);
     }
   }
 

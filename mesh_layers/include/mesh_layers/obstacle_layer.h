@@ -133,6 +133,8 @@ private:
   lvr2::SparseVertexMap<float> costs_;
   // The current set of lethal vertices
   std::set<lvr2::VertexHandle> lethals_;
+  // The timestamp of last observation per letahl vertex
+  lvr2::SparseVertexMap<rclcpp::Time> timestamps_;
   // Callback group for parallel execution with other layers
   rclcpp::CallbackGroup::SharedPtr callback_group_;
   // The obstacle point cloud subscriber
